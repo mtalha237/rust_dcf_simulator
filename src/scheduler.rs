@@ -43,6 +43,7 @@ impl Event {
 pub struct Scheduler {
     event_list: Vec<Event>,
     nodes_in_tx: usize,
+    use_rts_cts:bool,
     tx_success: bool,
     node_list: Vec<Node>,
     stop_stats: bool,
@@ -50,7 +51,7 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn new(num_nodes: usize, cw_min:usize, cw_max: usize) -> Scheduler {
+    pub fn new(num_nodes: usize, use_rts_cts:bool, cw_min:usize, cw_max: usize) -> Scheduler {
         let mut node_list: Vec<Node> = Vec::new();
         let mut event_list: Vec<Event> = Vec::new();
 
@@ -65,6 +66,7 @@ impl Scheduler {
         Scheduler {
             event_list: event_list,
             nodes_in_tx: 0,
+            use_rts_cts: use_rts_cts,
             tx_success: true,
             node_list: node_list,
             stop_stats: false,
@@ -116,7 +118,7 @@ impl Scheduler {
                 //Note that if another has already decided to TX (but not started yet),
                 //this will result in a collision. We keep track of the success of current TX
                 //with the self.tx_success variable.
-                match self.node_list.get_mut(node_id).unwrap().tx_start(event.time) {
+                match self.node_list.get_mut(node_id).unwrap().tx_start(event.time, self.use_rts_cts) {
                     Some(e ) => {
                         self.event_list.push(e);
                         if self.nodes_in_tx > 0 {
@@ -124,7 +126,7 @@ impl Scheduler {
                         }
                         self.nodes_in_tx += 1;
                         for node in self.node_list.iter_mut() {
-                            node.notify_channel(event.time, true, false);
+                            node.notify_channel(event.time, true, false, false);
                         }
                     },
                     None => return true,
@@ -138,7 +140,7 @@ impl Scheduler {
                 self.nodes_in_tx -= 1;
                 if self.nodes_in_tx == 0 {
                     for node in self.node_list.iter_mut() {
-                        match node.notify_channel(event.time, false, self.tx_success) {
+                        match node.notify_channel(event.time, false, self.tx_success, self.use_rts_cts) {
                             Some(e) => {
                                 self.event_list.push(e);
                             },

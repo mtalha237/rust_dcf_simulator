@@ -11,6 +11,17 @@ const PHY_HEADER:u64 = 128;
 const PACKET_DURATION:u64 = PACKET_PAYLOAD + MAC_HEADER + PHY_HEADER;
 const ACK_DURATION:u64 = ACK_PAYLOAD + PHY_HEADER;
 const PROP_DELAY:u64 = 1;
+const RTS_DURATION:u64 = 160 + PHY_HEADER;
+const CTS_DURATION:u64 = 112 + PHY_HEADER;
+
+const COMMON_DURATION_RTS_CTS:u64 = RTS_DURATION;
+const SUCCESS_DURATION_RTS_CTS:u64 = 3 * SIFS + CTS_DURATION + PACKET_DURATION + ACK_DURATION + DIFS;
+const COLLISION_DURATION_RTS_CTS:u64 = DIFS;
+
+const COMMON_DURATION_BASIC:u64 = PACKET_DURATION;
+const SUCCESS_DURATION_BASIC:u64 = SIFS + ACK_DURATION + DIFS;
+const COLLISION_DURATION_BASIC:u64 = DIFS;
+
 
 #[derive(Hash, Eq, Clone, Copy, PartialEq)]
 pub enum NodeStateType {
@@ -95,7 +106,7 @@ impl Node {
         };
     }
 
-    pub fn tx_start (&mut self, time: u64) -> Option<Event> {
+    pub fn tx_start (&mut self, time: u64, use_rts_cts: bool) -> Option<Event> {
         //Creates a TX End event.
         if self.backoff != 0 {
             println!("ERROR: node {} backoff was not 0: {}", self.id, self.backoff);
@@ -106,11 +117,19 @@ impl Node {
             println!("ERROR: node {} was not In TX: {}", self.id, self.state);
             return None;
         }
-
-        return Some(Event::new (EventType::EndTx, self.id, time + PACKET_DURATION));
+        if !use_rts_cts {
+            return Some(Event::new (EventType::EndTx, self.id, time + COMMON_DURATION_BASIC));
+        } else {
+            return Some(Event::new (EventType::EndTx, self.id, time + COMMON_DURATION_RTS_CTS));
+        }
+        
     }
 
-    pub fn notify_channel (&mut self, time: u64, channel_occupied: bool, defer_by_ack:bool) -> Option<Event> {
+    pub fn notify_channel (&mut self,
+                            time: u64,
+                            channel_occupied: bool, 
+                            no_collision:bool,
+                            use_rts_cts: bool) -> Option<Event> {
         //This function notifies nodes about channel occupation.
 
         if channel_occupied && self.state == NodeStateType::Backoff {
@@ -119,13 +138,22 @@ impl Node {
             return None;
         } else if !channel_occupied && self.state == NodeStateType::WaitChannel {
             //start BACKOFF when the channel is free.
-            //Wait for ACKs if a succesful TX has occured. Otherwise just wait DIFS
+            //The time when next event occurs depends on success/fail and rts/cts 
             self.state = NodeStateType::Backoff;
-            if defer_by_ack {
-                return Some(Event::new (EventType::DecrementBackoff, self.id, time + DIFS + SIFS + ACK_DURATION + PROP_DELAY));
+            if !use_rts_cts {
+                if no_collision {
+                    return Some(Event::new (EventType::DecrementBackoff, self.id, time + SUCCESS_DURATION_BASIC));
+                } else {
+                    return Some(Event::new (EventType::DecrementBackoff, self.id, time + COLLISION_DURATION_BASIC));
+                }
             } else {
-                return Some(Event::new (EventType::DecrementBackoff, self.id, time + DIFS + PROP_DELAY));
+                if no_collision {
+                    return Some(Event::new (EventType::DecrementBackoff, self.id, time + SUCCESS_DURATION_RTS_CTS));
+                } else {
+                    return Some(Event::new (EventType::DecrementBackoff, self.id, time + COLLISION_DURATION_RTS_CTS));
+                }
             }
+            
         } else {
             return None;
         }
