@@ -1,5 +1,5 @@
 # rust_dcf_simulator
-A Distributed Coordination Function written in Rust.
+A Distributed Coordination Function simulator written in Rust.
 
 This project implements the Distributed Coordination Function used in IEEE802.11. It simulates the backoff mechanism and RTS/CTS to measure the probability of a succesful transmission as well as the throughput. I have used the article in [1] for all the calculations.
 
