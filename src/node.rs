@@ -63,35 +63,36 @@ impl Node {
     pub fn backoff (&mut self, time: u64) -> Option<Event> {
         match self.state {
             NodeStateType::Backoff => {
+                //Decrement backoff in this state, if backoff reaches 0, start TX after 1us. This kind of simulates
+                //propogation delay and allows for collisions etc.
                 if self.backoff > 0 {
                     self.backoff -= 1;
-                    //println!("node {} backoff: {}", self.id, self.backoff);
                     return Some(Event::new (EventType::DecrementBackoff, self.id, time + SLOT_TIME));
                 } else {
-                    //println!("node {} will start TX!", self.id);
                     self.state = NodeStateType::InTx;
                     return Some(Event::new (EventType::StartTx, self.id, time + 1));
                 }
             },
             NodeStateType::WaitChannel => {
-                //Ignore
+                //Ignore backoff if channel is currently occupied.
                 return None;
             },
             NodeStateType::InTx => {
-                println!("node {} was in tx when Backoff occured!", self.id);
+                println!("ERROR: node {} was in tx when Backoff occured!", self.id);
                 return None;
             },
         };
     }
 
     pub fn tx_start (&mut self, time: u64) -> Option<Event> {
+        //Creates a TX End event.
         if self.backoff != 0 {
-            println!("node {} backoff was not 0: {}", self.id, self.backoff);
+            println!("ERROR: node {} backoff was not 0: {}", self.id, self.backoff);
             return None;
         }
 
         if self.state != NodeStateType::InTx {
-            println!("node {} was not In TX: {}", self.id, self.state);
+            println!("ERROR: node {} was not In TX: {}", self.id, self.state);
             return None;
         }
 
@@ -99,10 +100,15 @@ impl Node {
     }
 
     pub fn notify_channel (&mut self, time: u64, channel_occupied: bool, defer_by_ack:bool) -> Option<Event> {
+        //This function notifies nodes about channel occupation.
+
         if channel_occupied && self.state == NodeStateType::Backoff {
+            //stop BACKOFF when the channel is occupied
             self.state = NodeStateType::WaitChannel;
             return None;
         } else if !channel_occupied && self.state == NodeStateType::WaitChannel {
+            //start BACKOFF when the channel is free.
+            //Wait for ACKs if a succesful TX has occured. Otherwise just wait DIFS
             self.state = NodeStateType::Backoff;
             if defer_by_ack {
                 return Some(Event::new (EventType::DecrementBackoff, self.id, time + DIFS + SIFS + ACK_TIME + 1));
@@ -115,6 +121,7 @@ impl Node {
     }
     
     pub fn tx_end (&mut self, tx_success:bool) {
+        //Collect statistics when TX ends.
         if tx_success {
             self.num_success += 1;
             self.cw = self.cw_min;
@@ -125,8 +132,7 @@ impl Node {
                 self.cw = self.cw_max;
             }
         }
-//        println!("node {} prob success: {}", self.id, (self.num_success as f64) / ((self.num_success + self.num_fail) as f64));
-//        println!("node {} success: {}, fail: {}", self.id, self.num_success, self.num_fail);
+
         self.backoff = rand::random::<usize>() % self.cw;
         self.state = NodeStateType::WaitChannel;
     }

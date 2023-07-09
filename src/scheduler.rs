@@ -1,6 +1,8 @@
 use crate::node::{Node};
 use std::fmt;
 
+const NUM_STATISTICS:usize = 10000;
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum EventType {
     DecrementBackoff,
@@ -50,6 +52,8 @@ impl Scheduler {
     pub fn new(num_nodes: usize, cw_min:usize, cw_max: usize) -> Scheduler {
         let mut node_list: Vec<Node> = Vec::new();
         let mut event_list: Vec<Event> = Vec::new();
+
+        //Create all the nodes and kick-off them with backoff
         for i in 0..num_nodes {
             let node = Node::new(i, cw_min, cw_max);
             node_list.insert(i, node);
@@ -66,11 +70,10 @@ impl Scheduler {
         }
     }
 
-    pub fn add_event (&mut self, event: Event) {
-        self.event_list.push(event);
-    }
-
+    //Main function handling event loop
     pub fn handle_next_event (&mut self) -> bool {
+
+        //Find the event with the lowest time and execute it
         let mut min_index = std::usize::MAX;
         let mut min_time: u64 = std::u64::MAX;
         for (pos, e) in self.event_list.iter().enumerate() {
@@ -80,11 +83,13 @@ impl Scheduler {
             }
         }
 
+        //This should not happen as the nodes will always TX
         if min_index == std::usize::MAX {
             println!("ERROR: NO MORE EVENTS IN THE LIST!");
             return false;
         }
 
+        //Stop handling events if enough stats are collected
         if self.stop_stats {
             println!("Enough STATS collected!");
             return false;
@@ -95,17 +100,22 @@ impl Scheduler {
 
         match event.event_type {
             EventType::DecrementBackoff => {
+                //See node.backoff() function for more details
                 match self.node_list.get_mut(node_id).unwrap().backoff(event.time) {
                     Some(e ) => {
-                        self.add_event(e);
+                        self.event_list.push(e);
                     },
                     None => return true,
                 }
             },
             EventType::StartTx => {
+                //Start the TX of a node and notify other nodes about channel occupation.
+                //Note that if another has already decided to TX (but not started yet),
+                //this will result in a collision. We keep track of the success of current TX
+                //with the self.tx_success variable.
                 match self.node_list.get_mut(node_id).unwrap().tx_start(event.time) {
                     Some(e ) => {
-                        self.add_event(e);
+                        self.event_list.push(e);
                         if self.nodes_in_tx > 0 {
                             self.tx_success = false;
                         }
@@ -118,6 +128,8 @@ impl Scheduler {
                 }
             },
             EventType::EndTx => {
+                //Collect stats when a TX ends. Notify other channels if channel is free
+                //so that they can restart backoff
                 self.node_list.get_mut(node_id).unwrap().tx_end(self.tx_success);
                 
                 self.nodes_in_tx -= 1;
@@ -132,16 +144,15 @@ impl Scheduler {
                     }
                     self.tx_success = true;
                 }
-
+                
+                //See if enough stats are collected
                 let (suc, fail) = self.node_list.get_mut(node_id).unwrap().get_stats();
-//                println!("suc + fail: {}", suc + fail);
-                if suc + fail > 10000 {
+                if suc + fail > NUM_STATISTICS {
                     self.stop_stats = true;
                 }
             }
         };
-
-        return true;
+        true
     }
 
     pub fn print_stats(&self) {

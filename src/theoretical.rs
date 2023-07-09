@@ -1,9 +1,9 @@
 /*
-    p = 1- ((1-tao)^(n-1))
-    tao = 2 / (1 + CWmin + p * CWmin * (1 - ((2*p) ^ m) )/(1-2p))
- */
-
-
+    Theoretical calculations for the probability of success are made. For more details
+See article:
+    "Performance Analysis of the IEEE802.11 Distributed Coordination Function" by 
+        Giuseppe Bianchi (IEEE JOURNAL ON SELECTED AREAS IN COMMUNICATIONS, VOL.18, NO.3, MARCH 2000) 
+*/
 pub fn calculate_tao_and_p (num_nodes: usize, cw_min: usize, max_mul: i32) -> (f64, f64) {
     let mut p_current = 0.5;
     let mut p_diff = 0.9;
