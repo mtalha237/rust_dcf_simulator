@@ -5,9 +5,9 @@ mod theoretical;
 use scheduler::Scheduler;
 use theoretical::calculate_tao_and_p;
 
-const NUM_NODES:usize = 10;
-const CW_MIN:usize = 32;
-const MAX_MUL:u32 = 4;
+const NUM_NODES:usize = 50;
+const CW_MIN:usize = 128;
+const MAX_MUL:u32 = 3;
 
 fn main() {
     println!("... DCF simulator is started ...");

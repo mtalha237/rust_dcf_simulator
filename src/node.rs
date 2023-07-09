@@ -4,8 +4,13 @@ use crate::scheduler::{Event, EventType};
 const SIFS:u64 = 28;
 const DIFS:u64 = 128;
 const SLOT_TIME:u64 = 50;
-const PACKET_DURATION:u64 = 8584;
-const ACK_TIME:u64 = 72;
+const PACKET_PAYLOAD:u64 = 8184;
+const ACK_PAYLOAD:u64 = 112;
+const MAC_HEADER:u64 = 272;
+const PHY_HEADER:u64 = 128;
+const PACKET_DURATION:u64 = PACKET_PAYLOAD + MAC_HEADER + PHY_HEADER;
+const ACK_DURATION:u64 = ACK_PAYLOAD + PHY_HEADER;
+const PROP_DELAY:u64 = 1;
 
 #[derive(Hash, Eq, Clone, Copy, PartialEq)]
 pub enum NodeStateType {
@@ -33,7 +38,8 @@ pub struct Node {
     num_fail: usize,
     cw:usize,
     cw_min: usize,
-    cw_max: usize
+    cw_max: usize,
+    tx_bits: u64,
 }
 
 impl Node {
@@ -48,7 +54,8 @@ impl Node {
             num_fail: 0,
             cw: cw_min,
             cw_min: cw_min,
-            cw_max: cw_max
+            cw_max: cw_max,
+            tx_bits: 0
         }
     }
 
@@ -58,6 +65,10 @@ impl Node {
 
     pub fn get_stats(&self) -> (usize, usize) {
         (self.num_success, self.num_fail)
+    }
+
+    pub fn get_tx_bits(&self) -> u64 {
+        self.tx_bits
     }
 
     pub fn backoff (&mut self, time: u64) -> Option<Event> {
@@ -70,7 +81,7 @@ impl Node {
                     return Some(Event::new (EventType::DecrementBackoff, self.id, time + SLOT_TIME));
                 } else {
                     self.state = NodeStateType::InTx;
-                    return Some(Event::new (EventType::StartTx, self.id, time + 1));
+                    return Some(Event::new (EventType::StartTx, self.id, time + PROP_DELAY));
                 }
             },
             NodeStateType::WaitChannel => {
@@ -111,9 +122,9 @@ impl Node {
             //Wait for ACKs if a succesful TX has occured. Otherwise just wait DIFS
             self.state = NodeStateType::Backoff;
             if defer_by_ack {
-                return Some(Event::new (EventType::DecrementBackoff, self.id, time + DIFS + SIFS + ACK_TIME + 1));
+                return Some(Event::new (EventType::DecrementBackoff, self.id, time + DIFS + SIFS + ACK_DURATION + PROP_DELAY));
             } else {
-                return Some(Event::new (EventType::DecrementBackoff, self.id, time + DIFS + 1));
+                return Some(Event::new (EventType::DecrementBackoff, self.id, time + DIFS + PROP_DELAY));
             }
         } else {
             return None;
@@ -124,6 +135,7 @@ impl Node {
         //Collect statistics when TX ends.
         if tx_success {
             self.num_success += 1;
+            self.tx_bits += PACKET_PAYLOAD;
             self.cw = self.cw_min;
         } else {
             self.num_fail += 1;

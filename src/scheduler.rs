@@ -45,7 +45,8 @@ pub struct Scheduler {
     nodes_in_tx: usize,
     tx_success: bool,
     node_list: Vec<Node>,
-    stop_stats: bool
+    stop_stats: bool,
+    time: u64
 }
 
 impl Scheduler {
@@ -66,7 +67,8 @@ impl Scheduler {
             nodes_in_tx: 0,
             tx_success: true,
             node_list: node_list,
-            stop_stats: false
+            stop_stats: false,
+            time: 0
         }
     }
 
@@ -97,7 +99,8 @@ impl Scheduler {
 
         let event = self.event_list.remove(min_index);
         let node_id: usize = event.get_node_id();
-
+        
+        self.time = event.time;
         match event.event_type {
             EventType::DecrementBackoff => {
                 //See node.backoff() function for more details
@@ -156,11 +159,14 @@ impl Scheduler {
     }
 
     pub fn print_stats(&self) {
+        let mut total_tx_bits:u64 = 0;
         println!("*******************Simulation results*******************");
         for node in self.node_list.iter() {
             let (suc, fail) = node.get_stats();
             println!("node {} prob success: {}", node.get_id(), (suc as f64) / ((suc + fail) as f64));
+            total_tx_bits += node.get_tx_bits();
         }
+        println!("Total throughput: {} Mbps", (total_tx_bits as f64) / (self.time as f64));
         println!("*******************Simulation results*******************");
     }
 }
